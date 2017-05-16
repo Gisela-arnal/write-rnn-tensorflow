@@ -11,6 +11,11 @@ from model import Model
 
 def main():
   parser = argparse.ArgumentParser()
+
+  parser.add_argument('--data_files', type=str, default='data_files.list',
+                     help='path of the data file')
+  parser.add_argument('--dataset_file', type=str, default='output_body.h5',
+                     help='path of the data file')
   parser.add_argument('--rnn_size', type=int, default=256,
                      help='size of RNN hidden state')
   parser.add_argument('--num_layers', type=int, default=2,
@@ -43,7 +48,7 @@ def main():
   train(args)
 
 def train(args):
-    data_loader = DataLoader(args.batch_size, args.seq_length, args.data_scale)
+    data_loader = DataLoader(args.data_files, args.dataset_file, args.batch_size, args.seq_length, args.data_scale)
 
     if args.model_dir != '' and not os.path.exists(args.model_dir):
       os.makedirs(args.model_dir)
