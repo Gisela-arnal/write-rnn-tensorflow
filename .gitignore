@@ -93,3 +93,5 @@ ENV/
 
 # training data folder
 data/
+.idea/
+/save/config.pkl

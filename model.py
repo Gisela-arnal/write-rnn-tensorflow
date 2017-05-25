@@ -31,8 +31,8 @@ class Model():
 
     self.cell = cell
 
-    self.input_data = tf.placeholder(dtype=tf.float32, shape=[None, args.seq_length, 3], name='data_in')
-    self.target_data = tf.placeholder(dtype=tf.float32, shape=[None, args.seq_length, 3], name='targets')
+    self.input_data = tf.placeholder(dtype=tf.float32, shape=[None, args.seq_length , 3*25] , name='data_in')
+    self.target_data = tf.placeholder(dtype=tf.float32, shape=[None, args.seq_length, 3*25], name='targets')
     zero_state = cell.zero_state(batch_size=args.batch_size, dtype=tf.float32)
     self.state_in = tf.identity(zero_state, name='state_in')
 

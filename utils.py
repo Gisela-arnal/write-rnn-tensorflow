@@ -2,8 +2,8 @@ import os
 import pickle
 import random
 import xml.etree.ElementTree as ET
-import h5py
 
+import h5py
 import numpy as np
 
 
@@ -170,15 +170,17 @@ def draw_strokes_pdf(data, param, factor=10, svg_filename='sample_pdf.svg'):
 
 
 class DataLoader():
-    def __init__(self, files_list, dataset_file, batch_size=50, seq_length=300, scale_factor=10, limit=500):
+    def __init__(self, dataset_path, files_list, dataset_file, batch_size=50, seq_length=3 * 30, scale_factor=10,
+                 limit=500):
+        self.dataset_path = dataset_path
         self.batch_size = batch_size
         self.seq_length = seq_length
         self.scale_factor = scale_factor  # divide data by this factor
         self.limit = limit  # removes large noisy gaps in the data
 
-        assert os.path.exists(files_list)
+        assert os.path.exists(os.path.join(self.dataset_path, files_list))
         # print("creating training data pkl file from raw source")
-        file = open(files_list, 'r')
+        file = open(os.path.join(self.dataset_path, files_list), 'r')
         file = file.readlines()
 
         self.files_list = []
@@ -186,7 +188,6 @@ class DataLoader():
             self.files_list.append(name.split('\n')[0])
 
         self.dataset_file = dataset_file
-
 
         # raw_data_dir = self.data_dir+"/lineStrokes"
 
@@ -270,59 +271,29 @@ class DataLoader():
         f.close()
 
     def load_file(self, data_file):
-        # f = open(data_file,"rb")
-        # self.raw_data = pickle.load(f)
-        # f.close()
-        #
-        # # goes thru the list, and only keeps the text entries that have more than seq_length points
-        # self.data = []
-        # self.valid_data =[]
-        # counter = 0
-        #
-        # # every 1 in 20 (5%) will be used for validation data
-        # cur_data_counter = 0
-        # for data in self.raw_data:
-        #   if len(data) > (self.seq_length+2):
-        #     # removes large gaps from the data
-        #     data = np.minimum(data, self.limit)
-        #     data = np.maximum(data, -self.limit)
-        #     data = np.array(data,dtype=np.float32)
-        #     data[:,0:2] /= self.scale_factor
-        #     cur_data_counter = cur_data_counter + 1
-        #     if cur_data_counter % 20 == 0:
-        #       self.valid_data.append(data)
-        #     else:
-        #       self.data.append(data)
-        #       counter += int(len(data)/((self.seq_length+2))) # number of equiv batches this datapoint is worth
-        #
-        # print("train data: {}, valid data: {}".format(len(self.data), len(self.valid_data)))
-        # # minus 1, since we want the ydata to be a shifted version of x data
-        # self.num_batches = int(counter / self.batch_size)
-        data = np.loadtxt(data_file, delimiter=',')
+        id_num = 25
+        col_filter = (2, 3, 4)
 
-        return data[data[:, 1] == 0][:, 2:5]
+        data = np.loadtxt(os.path.join(self.dataset_path, data_file), delimiter=',')
+
+        return np.split(data[:, col_filter], data.shape[0] / id_num)
 
     def load_preprocessed(self, save_h5=False):
         if save_h5:
 
-            d = np.empty((0,3))
+            d = []
 
             for file_name in self.files_list:
-                d = np.concatenate((d,self.load_file(file_name)))
+                d += self.load_file(file_name)
 
             self.data = d
-            # self.data.reshape((-1,3))
 
             with h5py.File(self.dataset_file, 'w') as file:
                 file.create_dataset('dataset', data=self.data, compression='gzip', compression_opts=9)
 
-                file.close()
-
         else:
             with h5py.File(self.dataset_file, 'r') as file:
                 self.data = file['dataset'][:]
-
-                file.close()
 
     def validation_data(self):
         # returns validation data
