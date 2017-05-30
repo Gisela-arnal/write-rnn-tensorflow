@@ -16,6 +16,8 @@ def main():
                         help='path of the data file')
     parser.add_argument('--data_files', type=str, default='data_files.list',
                         help='path of the data file')
+    parser.add_argument('--save_h5', dest='save_h5', action='store_true',
+                        help='save parameters to h5 file')
     parser.add_argument('--dataset_file', type=str, default='output_body.h5',
                         help='path of the data file')
     parser.add_argument('--rnn_size', type=int, default=256,
@@ -40,19 +42,20 @@ def main():
                         help='learning rate')
     parser.add_argument('--decay_rate', type=float, default=0.95,
                         help='decay rate for rmsprop')
-    parser.add_argument('--num_mixture', type=int, default=20,
+    parser.add_argument('--num_mixture', type=int, default=25,
                         help='number of gaussian mixtures')
     parser.add_argument('--data_scale', type=float, default=20,
                         help='factor to scale raw data down by')
     parser.add_argument('--keep_prob', type=float, default=0.8,
                         help='dropout keep probability')
+    parser.set_defaults(save_h5=False)
     args = parser.parse_args()
     train(args)
 
 
 def train(args):
     data_loader = DataLoader(args.dataset_path, args.data_files, args.dataset_file, args.batch_size, args.seq_length,
-                             args.data_scale)
+                             args.data_scale, save_h5=args.save_h5)
 
     if args.model_dir != '' and not os.path.exists(args.model_dir):
         os.makedirs(args.model_dir)
@@ -69,14 +72,15 @@ def train(args):
         saver = tf.train.Saver(tf.global_variables())
         for e in range(args.num_epochs):
             sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
-            data_loader.reset_batch_pointer()
+            # data_loader.reset_batch_pointer()
             v_x, v_y = data_loader.validation_data()
             valid_feed = {model.input_data: v_x, model.target_data: v_y, model.state_in: model.state_in.eval()}
             state = model.state_in.eval()
+            batch_generator = data_loader.next_batch()
             for b in range(data_loader.num_batches):
                 i = e * data_loader.num_batches + b
                 start = time.time()
-                x, y = data_loader.next_batch()
+                x, y = next(batch_generator)
                 feed = {model.input_data: x, model.target_data: y, model.state_in: state}
                 train_loss_summary, train_loss, state, _ = sess.run(
                     [model.train_loss_summary, model.cost, model.state_out, model.train_op], feed)
@@ -87,8 +91,7 @@ def train(args):
 
                 end = time.time()
                 print(
-                    "{}/{} (epoch {}), train_loss = {:.3f}, valid_loss = {:.3f}, time/batch = {:.3f}" \
-                        .format(
+                    "{}/{} (epoch {}), train_loss = {:.3f}, valid_loss = {:.3f}, time/batch = {:.3f}".format(
                         i,
                         args.num_epochs * data_loader.num_batches,
                         e,
