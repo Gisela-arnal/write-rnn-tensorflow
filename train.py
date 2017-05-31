@@ -30,7 +30,7 @@ def main():
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=3 * 30,
                         help='RNN sequence length')
-    parser.add_argument('--num_epochs', type=int, default=30,
+    parser.add_argument('--num_epochs', type=int, default=2,
                         help='number of epochs')
     parser.add_argument('--save_every', type=int, default=500,
                         help='save frequency')
@@ -38,7 +38,7 @@ def main():
                         help='directory to save model to')
     parser.add_argument('--grad_clip', type=float, default=10.,
                         help='clip gradients at this value')
-    parser.add_argument('--learning_rate', type=float, default=0.005,
+    parser.add_argument('--learning_rate', type=float, default=0.0005,
                         help='learning rate')
     parser.add_argument('--decay_rate', type=float, default=0.95,
                         help='decay rate for rmsprop')

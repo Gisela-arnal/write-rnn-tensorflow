@@ -44,27 +44,27 @@ print("loading model: ", ckpt.model_checkpoint_path)
 saver.restore(sess, ckpt.model_checkpoint_path)
 
 def sample_stroke():
-  [strokes, params] = model.sample(sess, sample_args.sample_length)
-  draw_strokes(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.normal.svg')
-  draw_strokes_random_color(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.color.svg')
-  draw_strokes_random_color(strokes, factor=sample_args.scale_factor, per_stroke_mode = False, svg_filename = sample_args.filename+'.multi_color.svg')
-  draw_strokes_eos_weighted(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.eos_pdf.svg')
-  draw_strokes_pdf(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.pdf.svg')
-  return [strokes, params]
+  [dance, params] = model.sample(sess)
+#   draw_strokes(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.normal.svg')
+#   draw_strokes_random_color(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.color.svg')
+#   draw_strokes_random_color(strokes, factor=sample_args.scale_factor, per_stroke_mode = False, svg_filename = sample_args.filename+'.multi_color.svg')
+#   draw_strokes_eos_weighted(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.eos_pdf.svg')
+#   draw_strokes_pdf(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.pdf.svg')
+  return [dance, params]
 
 
 def freeze_and_save_graph(sess, folder, out_nodes, as_text=False):
-    ## save graph definition
+    # save graph definition
     graph_raw = sess.graph_def
     graph_frz = tf.graph_util.convert_variables_to_constants(sess, graph_raw, out_nodes)
     ext = '.txt' if as_text else '.pb'
-    #tf.train.write_graph(graph_raw, folder, 'graph_raw'+ext, as_text=as_text)
+    # tf.train.write_graph(graph_raw, folder, 'graph_raw'+ext, as_text=as_text)
     tf.train.write_graph(graph_frz, folder, 'graph_frz'+ext, as_text=as_text)
     
 
 if(sample_args.freeze_graph):
     freeze_and_save_graph(sess, sample_args.model_dir, ['data_out_mdn', 'data_out_eos', 'state_out'], False)
 
-[strokes, params] = sample_stroke()
+[dance, params] = sample_stroke()
 
 
