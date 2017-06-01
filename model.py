@@ -38,7 +38,9 @@ class Model():
         self.state_in = tf.identity(zero_state, name='state_in')
 
         self.num_mixture = args.num_mixture
-        nout = 1 + self.num_mixture * 228  # end_of_stroke + prob + 2*(mu + sig) + corr
+        # nout = self.num_mixture * 151  # end_of_stroke + prob + 2*(mu + sig) + corr
+        nout = self.num_mixture * 3
+        print('nout')
         print(nout)
 
         with tf.variable_scope('rnnlm'):
@@ -52,6 +54,8 @@ class Model():
         outputs, state_out = tf.nn.seq2seq.rnn_decoder(inputs, self.state_in, cell, loop_function=None, scope='rnnlm')
         output = tf.reshape(tf.concat(1, values=outputs), [-1, args.rnn_size])
         output = tf.nn.xw_plus_b(output, output_w, output_b)
+        print('output:')
+        print(output)
         self.state_out = tf.identity(state_out, name='state_out')
 
         # reshape target data so that it is compatible with prediction shape
@@ -77,39 +81,33 @@ class Model():
         #     result = tf.div(result, denom)
         #     return result
 
+        def tf_1d_normal(x1, mu1, s1):
+            # eq # 24 and 25 of http://arxiv.org/abs/1308.0850
+            norm1 = tf.subtract(x1, mu1)
+            z = tf.square(tf.div(norm1, s1))
+            result = tf.exp(tf.div(-z, 2))
+            denom = tf.sqrt(2 * np.pi * s1)
+            result = tf.div(result, denom)
+
+            return result
+
         def tf_nd_normal(x, mu, C):
             x = tf.reshape(x, [4500, 75, 1])
-            mu = tf.reshape(mu, [4500, 75, 1])
+            mu = tf.reshape(mu, [4500, 75, 25])
 
             # eq wikipedia multivariate normal distribution
             norm = tf.subtract(x, mu)
-            print(norm)
-            cov = tf.reshape(C, (-1, 75, 75))
-            print(cov)
+            cov = tf.reshape(C, (-1, 75, 25))
+            cov = cov * tf.eye(75, 75)
             z = -0.5 * tf.transpose(norm, perm=[0, 2, 1])
-            print('esto es la z ')
-            print(tf.matrix_inverse(cov))
             z1 = tf.matmul(z, tf.matrix_inverse(cov))
-            print(z1)
             z2 = tf.matmul(z1, norm)
-            print('shape')
-            print(cov.get_shape())
-
             result = tf.exp(z2)
-            # denom = []
-            # for i in range(cov.get_shape()[0]):
-            #     print(cov[i])
-            #     print(i)
-            #     denom.append(tf.sqrt(tf.matrix_determinant(2 * np.pi * cov[i])))
-            denom=tf.sqrt(tf.matrix_determinant(2 * np.pi * cov))
+            denom = tf.sqrt(tf.matrix_determinant(2 * np.pi * cov))
 
-            print('det')
-            print(2 * np.pi * cov)
-            print(2 * np.pi * C)
             denom = tf.reshape(denom, [4500, 1, 1])
             result = result / denom
-            print('result: ')
-            print(result)
+
             return result
 
         # def get_lossfunc(z_pi, z_mu1, z_mu2, z_sigma1, z_sigma2, z_corr, z_eos, x1_data, x2_data, eos_data):
@@ -136,15 +134,22 @@ class Model():
             result = result1
             return tf.reduce_sum(result)
 
+        def get_lossfunc_gaus(output, x):
+
+            # loss = tf.nn.seq2seq.sequence_loss_by_example([output], [tf.reshape(x, [-1])], [tf.ones([args.batch_size *
+            #                                                                                      args.seq_length])])
+            loss = tf.sqrt(tf.reduce_sum(tf.square(tf.sub(output,x)), reduction_indices=1))
+            return loss
+
         # below is where we need to do MDN splitting of distribution params
         def get_mixture_coef(output):
-            lista = tf.split(1, 5701, value=output)
-            z_pi = lista[0]
+            lista = tf.split(1, 3775, value=output)
+            z_pi = lista[0:25]
             # z_pi = tf.reshape(z_pi, (-1,4500))
-            z_mu = lista[1:76]
+            z_mu = lista[25:25 + 75 * 25]
             z_mu = tf.reshape(z_mu, (-1, 75))
-            z_cov = lista[76:]
-            z_cov = tf.reshape(z_cov, (-1, 75 * 75))
+            z_cov = lista[25 + 25 * 75:]
+            z_cov = tf.reshape(z_cov, (-1, 75))
 
             # softmax all the pi's:
             max_pi = tf.reduce_max(z_pi, 1, keep_dims=True)
@@ -156,20 +161,25 @@ class Model():
             # # exponentiate the covariance to make cov positive-definite matrix
             # z_sigma1 = tf.exp(z_sigma1)
             # z_sigma2 = tf.exp(z_sigma2)
-            z_cov = tf.exp(z_cov)
+            # falta definirla positiva - la cov
+            # z_cov = tf.exp(z_cov)
+            # z_cov = tf.matmul(z_cov, tf.transpose(z_cov)) + tf.eye(75,75)
+
 
             return [z_pi, z_mu, z_cov]  # , z_eos]
 
         # [o_pi, o_mu1, o_mu2, o_sigma1, o_sigma2, o_corr, o_eos] = get_mixture_coef(output)
-        [o_pi, o_mu, o_cov] = get_mixture_coef(output)
+        # [o_pi, o_mu, o_cov] = get_mixture_coef(output)
+        o_data = output
 
         # I could put all of these in a single tensor for reading out, but this is more human readable
-        data_out_pi = tf.identity(o_pi, "data_out_pi");
-        data_out_mu1 = tf.identity(o_mu, "data_out_mu");
+        # data_out_pi = tf.identity(o_pi, "data_out_pi");
+        # data_out_mu1 = tf.identity(o_mu, "data_out_mu");
         # data_out_mu2 = tf.identity(o_mu2, "data_out_mu2");
         # data_out_sigma1 = tf.identity(o_sigma1, "data_out_sigma1");
         # data_out_sigma2 = tf.identity(o_sigma2, "data_out_sigma2");
-        data_out_cov = tf.identity(o_cov, "data_out_cov");
+        # data_out_cov = tf.identity(o_cov, "data_out_cov");
+        data_out_data = tf.identity(o_data, "data_out");
         # data_out_eos = tf.identity(o_eos, "data_out_eos");
 
         # sticking them all (except eos) in one op anyway, makes it easier for freezing the graph later
@@ -179,9 +189,8 @@ class Model():
         # data_out_mdn = tf.identity(
         #     [data_out_pi, data_out_mu1, data_out_mu2, data_out_sigma1, data_out_sigma2, data_out_corr],
         #     name="data_out_mdn")
-        print('foo')
+
         # data_out_mdn = tf.identity([data_out_pi, data_out_mu1, data_out_cov], name="data_out_mdn")
-        print('bar')
 
         # self.pi = o_pi
         # self.mu1 = o_mu1
@@ -190,16 +199,24 @@ class Model():
         # self.sigma2 = o_sigma2
         # self.corr = o_corr
         # self.eos = o_eos
-        self.pi = o_pi
-        self.mu = o_mu
-        self.cov = o_cov
+
+        # self.pi = o_pi
+        # self.mu = o_mu
+        # self.cov = o_cov
+        self.data = o_data
 
         # lossfunc = get_lossfunc(o_pi, o_mu1, o_mu2, o_sigma1, o_sigma2, o_corr, o_eos, x1_data, x2_data, eos_data)
-        lossfunc = get_lossfunc(o_pi, o_mu, o_cov, x1_data)
+        # lossfunc = get_lossfunc(o_pi, o_mu, o_cov, x1_data)
+        # solamente la LSTM
+
+        lossfunc = get_lossfunc_gaus(o_data, x1_data)
+        lossfunc = tf.reduce_sum(lossfunc)
         self.cost = lossfunc / (args.batch_size * args.seq_length)
 
         self.train_loss_summary = tf.summary.scalar('train_loss', self.cost)
         self.valid_loss_summary = tf.summary.scalar('validation_loss', self.cost)
+        self.loss_summary = tf.summary.histogram('loss', lossfunc)
+        tf.summary.histogram('train_loss', self.cost)
 
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
