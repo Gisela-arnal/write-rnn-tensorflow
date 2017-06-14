@@ -30,7 +30,7 @@ def main():
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=3 * 30,
                         help='RNN sequence length')
-    parser.add_argument('--num_epochs', type=int, default=2,
+    parser.add_argument('--num_epochs', type=int, default=1,
                         help='number of epochs')
     parser.add_argument('--save_every', type=int, default=500,
                         help='save frequency')
@@ -100,6 +100,7 @@ def train(args):
                     checkpoint_path = os.path.join(args.model_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
                     print("model saved to {}".format(checkpoint_path))
+
 
 
 if __name__ == '__main__':

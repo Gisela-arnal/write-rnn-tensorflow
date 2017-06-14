@@ -204,7 +204,10 @@ class DataLoader():
         self.max_mat = -1e+20 * np.ones(self.parameters_length)
         self.min_mat = 1e+20 * np.ones(self.parameters_length)
 
-        self.load_preprocessed(save_h5)
+        self.min_mat, self.max_mat = self.load_preprocessed(save_h5)
+        # self.max_mat = maxi
+        # self.min_mat = mini
+
         # self.reset_batch_pointer()
 
     def preprocess(self, data_dir, data_file):
@@ -296,7 +299,10 @@ class DataLoader():
         self.min_mat = np.minimum(np.min(data_aux, axis=(0, 1)), self.min_mat)
         self.max_mat = np.maximum(np.max(data_aux, axis=(0, 1)), self.max_mat)
 
-        return data_aux
+        mini = self.min_mat
+        maxi = self.max_mat
+
+        return data_aux, mini, maxi
 
     def load_preprocessed(self, save_h5=False):
         # self.valid_data = []
@@ -306,7 +312,8 @@ class DataLoader():
 
             for file_name in self.files_list:
                 print(file_name)
-                d = np.concatenate((d, self.load_file(file_name)))
+                fil, mini, maxi = self.load_file(file_name)
+                d = np.concatenate((d, fil))
 
             self.data = d
 
@@ -319,6 +326,8 @@ class DataLoader():
         else:
             with h5py.File(self.dataset_file, 'r') as file:
                 self.data = file['dataset'][:]
+            maxi = -1e+20 * np.ones(self.parameters_length)
+            mini = 1e+20 * np.ones(self.parameters_length)
 
         valid_index = int(np.floor(self.data.shape[0] * 0.05))
 
@@ -329,6 +338,8 @@ class DataLoader():
         self.valid_data = self.data[-valid_index:]
         self.data = self.data[:-valid_index]
         self.num_batches = int(np.floor(self.data.shape[0] / self.batch_size))
+
+        return mini, maxi
 
     def validation_data(self):
         # returns validation data

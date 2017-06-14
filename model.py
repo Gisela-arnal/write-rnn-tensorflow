@@ -1,7 +1,7 @@
-import random
-
 import numpy as np
 import tensorflow as tf
+
+from utils import DataLoader
 
 
 class Model():
@@ -38,10 +38,8 @@ class Model():
         self.state_in = tf.identity(zero_state, name='state_in')
 
         self.num_mixture = args.num_mixture
-        # nout = self.num_mixture * 151  # end_of_stroke + prob + 2*(mu + sig) + corr
-        nout = self.num_mixture * 3
-        print('nout')
-        print(nout)
+        nout = self.num_mixture * 151  # end_of_stroke + prob + 2*(mu + sig) + corr
+        # nout = self.num_mixture * 3
 
         with tf.variable_scope('rnnlm'):
             output_w = tf.get_variable("output_w", [args.rnn_size, nout])
@@ -125,20 +123,46 @@ class Model():
         #     return tf.reduce_sum(result)
 
         def get_lossfunc(z_pi, m, C, x):
-            result0 = tf_nd_normal(x, m, C)
-            # implementing eq # 26 of http://arxiv.org/abs/1308.0850
-            result1 = tf.multiply(result0, z_pi)
-            result1 = tf.reduce_sum(result1, 1, keep_dims=True)
-            result1 = -tf.log(tf.maximum(result1, 1e-20))  # at the beginning, some errors are exactly zero.
 
+            x = tf.reshape(x, (75, 90))
+            result1 = 0
+            result_aux = []
+            for g in range(90):
+                x_aux = x[:, g]
+                m_aux0 = m[:, g]
+                c_aux0 = C[:, g]
+                pi_aux = z_pi[:, g]
+                for i in range(25):
+                    global result1
+                    result0 = 1
+
+                    # m_aux = tf.reshape(m[i * 75:i * 75 + 75], (90, 75, 1))
+                    m_aux = m_aux0[i * 75:i * 75 + 75]
+                    # c_aux = tf.reshape(C[i * 75:i * 75 + 75], (90, 75, 1))
+                    c_aux = c_aux0[i * 75:i * 75 + 75]
+                    for j in range(75):
+                        result = tf_1d_normal(x_aux[j], m_aux[j], c_aux[j])
+                        result0 = result0 * result
+
+                        print('g: {} - i: {} - j: {}'.format(g, i, j))
+                    # implementing eq # 26 of http://arxiv.org/abs/1308.0850
+                    # print(result1)
+                    # print(result0)
+                    result1 += tf.multiply(result0, pi_aux[i])
+                result_aux.append(result1)
+
+                # result1 = tf.reduce_sum(result0, 1, keep_dims=True)
+            result1 = -tf.log(tf.maximum(result_aux, 1e-20))  # at the beginning, some errors are exactly zero.
+            # result1 = -tf.log(tf.maximum(tf.constant(result_aux), 1e-20))  # at the beginning, some errors are exactly zero.
             result = result1
+
             return tf.reduce_sum(result)
 
         def get_lossfunc_gaus(output, x):
 
             # loss = tf.nn.seq2seq.sequence_loss_by_example([output], [tf.reshape(x, [-1])], [tf.ones([args.batch_size *
             #                                                                                      args.seq_length])])
-            loss = tf.sqrt(tf.reduce_sum(tf.square(tf.sub(output,x)), reduction_indices=1))
+            loss = tf.sqrt(tf.reduce_sum(tf.square(tf.sub(output, x)), reduction_indices=1))
             return loss
 
         # below is where we need to do MDN splitting of distribution params
@@ -168,18 +192,65 @@ class Model():
 
             return [z_pi, z_mu, z_cov]  # , z_eos]
 
+        def gammaln(x):
+            # fast approximate gammaln from Paul Mineiro
+            # http://www.machinedlearnings.com/2011/06/faster-lda.html
+            logterm = tf.log(x * (1.0 + x) * (2.0 + x))
+            xp3 = 3.0 + x
+            return -2.081061466 - x + 0.0833333 / xp3 - logterm + (2.5 + x) * tf.log(xp3)
+
+        def tf_beta_dist(y, s1, s2):
+            # beta distribution for tensorflow
+            exp1 = tf.sub(s1, 1.0)
+            exp2 = tf.sub(s2, 1.0)
+            d1 = tf.mul(exp1, tf.log(y))
+            d2 = tf.mul(exp2, tf.log(tf.sub(1.0, y)))
+            f1 = tf.add(d1, d2)
+            f2 = gammaln(s1)
+            f3 = gammaln(s2)
+            f4 = gammaln(s1 + s2)
+            return tf.exp(tf.add((tf.sub(f4, tf.add(f2, f3))), f1))
+
+        def get_mixture_coef_mdn(output):
+            lista = tf.split(1, 3775, value=output)
+            # pi corresponde a los pesos de las gaussianas
+            z_pi = lista[0:25]
+            # z_pi = tf.reshape(z_pi, (-1,4500))
+            z_mu = lista[25:25 + 75 * 25]
+            # z_mu = tf.reshape(z_mu, (-1,25, 75))
+            z_cov = lista[25 + 25 * 75:]
+            # z_cov = tf.reshape(z_cov, (-1, 25, 75))
+
+            # softmax all the pi's:
+            max_pi = tf.reduce_max(z_pi, 1, keep_dims=True)
+            z_pi = tf.subtract(z_pi, max_pi)
+            z_pi = tf.exp(z_pi)
+            normalize_pi = tf.reciprocal(tf.reduce_sum(z_pi, 1, keep_dims=True))
+            z_pi = tf.multiply(normalize_pi, z_pi)
+
+            # # exponentiate the covariance to make cov positive-definite matrix
+            # z_sigma1 = tf.exp(z_sigma1)
+            # z_sigma2 = tf.exp(z_sigma2)
+            # z_cov = tf.matmul(z_cov, tf.transpose(z_cov)) + tf.eye(75,75)
+
+            # Nos aseguramos que z_cov y z_mu sean positivos
+            z_cov = tf.exp(z_cov)
+            z_mu = tf.exp(z_mu)
+
+            return [z_pi, z_mu, z_cov]  # , z_eos]
+
         # [o_pi, o_mu1, o_mu2, o_sigma1, o_sigma2, o_corr, o_eos] = get_mixture_coef(output)
-        # [o_pi, o_mu, o_cov] = get_mixture_coef(output)
-        o_data = output
+        [o_pi, o_mu, o_cov] = get_mixture_coef_mdn(output)
+        # o_data = output
 
         # I could put all of these in a single tensor for reading out, but this is more human readable
-        # data_out_pi = tf.identity(o_pi, "data_out_pi");
-        # data_out_mu1 = tf.identity(o_mu, "data_out_mu");
+        data_out_pi = tf.identity(o_pi, "data_out_pi");
+        data_out_mu1 = tf.identity(o_mu, "data_out_mu");
         # data_out_mu2 = tf.identity(o_mu2, "data_out_mu2");
         # data_out_sigma1 = tf.identity(o_sigma1, "data_out_sigma1");
         # data_out_sigma2 = tf.identity(o_sigma2, "data_out_sigma2");
-        # data_out_cov = tf.identity(o_cov, "data_out_cov");
-        data_out_data = tf.identity(o_data, "data_out");
+        data_out_cov = tf.identity(o_cov, "data_out_cov");
+        # data_out_data = tf.identity(o_data, "data_out");
         # data_out_eos = tf.identity(o_eos, "data_out_eos");
 
         # sticking them all (except eos) in one op anyway, makes it easier for freezing the graph later
@@ -200,16 +271,16 @@ class Model():
         # self.corr = o_corr
         # self.eos = o_eos
 
-        # self.pi = o_pi
-        # self.mu = o_mu
-        # self.cov = o_cov
-        self.data = o_data
+        self.pi = o_pi
+        self.mu = o_mu
+        self.cov = o_cov
+        # self.data = o_data
 
         # lossfunc = get_lossfunc(o_pi, o_mu1, o_mu2, o_sigma1, o_sigma2, o_corr, o_eos, x1_data, x2_data, eos_data)
-        # lossfunc = get_lossfunc(o_pi, o_mu, o_cov, x1_data)
+        lossfunc = get_lossfunc(o_pi, o_mu, o_cov, x1_data)
         # solamente la LSTM
 
-        lossfunc = get_lossfunc_gaus(o_data, x1_data)
+        # lossfunc = get_lossfunc_gaus(o_data, x1_data)
         lossfunc = tf.reduce_sum(lossfunc)
         self.cost = lossfunc / (args.batch_size * args.seq_length)
 
@@ -242,32 +313,51 @@ class Model():
             x = np.random.multivariate_normal(mu, cov, 75)
             return x
 
-        # todo: mirar esto
         # prev_x = np.zeros((1, 1, 3*25), dtype=np.float32)
-        prev_x = np.random.rand(1, 1, 3 * 25)
+        prev_x = np.random.rand(1, 90, 3 * 25)
         # prev_x[0, 0, 2] = 1  # initially, we want to see beginning of new stroke
         prev_state = sess.run(self.cell.zero_state(1, tf.float32))
 
-        dance = np.zeros((self.args.seq_length, 3 * 25), dtype=np.float32)
+        dance = np.zeros((self.args.seq_length * 4, 3 * 25), dtype=np.float32)
+        # print('mirar aqui: ')
+        # print(prev_x)
+        # print(prev_state)
+        # print(dance)
         mixture_params = []
+        data_loader = DataLoader('data', 'data_files.list', 'output_body.h5')
+        mini, maxi = data_loader.load_preprocessed('true')
 
-        for i in range(self.args.seq_length):
+        for i in range(self.args.seq_length * 4):
             feed = {self.input_data: prev_x, self.state_in: prev_state}
 
-            [o_pi, o_mu, o_cov, next_state] = sess.run(
-                [self.pi, self.mu, self.cov, self.state_out], feed)
+            # [o_pi, o_mu, o_cov, next_state] = sess.run(
+            #    [self.pi, self.mu, self.cov, self.state_out], feed)
 
-            idx = get_pi_idx(random.random(), o_pi[0])
+            [output, next_state] = sess.run([self.data, self.state_out], feed)
+            # idx = get_pi_idx(random.random(), o_pi[0])
 
-            next_x1 = sample_gaussian_nd(o_mu[idx], o_cov[idx])
+            # next_x1 = sample_gaussian_nd(o_mu[idx], o_cov[idx])
+            p = output[0]
+            # next_x1 = np.argmax(p)
+            dance[i, :] = p
 
-            dance[i, :] = next_x1
+            # params = [o_pi[0], o_mu[0], o_cov[0]]
+            # mixture_params.append(params)
 
-            params = [o_pi[0], o_mu[0], o_cov[0]]
-            mixture_params.append(params)
-
-            prev_x = np.zeros((1, 1, 3 * 25), dtype=np.float32)
-            prev_x[0, 0:] = np.array([next_x1], dtype=np.float32)
+            prev_x = np.zeros((1, 90, 3 * 25), dtype=np.float32)
+            prev_x[0, 0:] = np.array([output], dtype=np.float32)
+            # prev_x=output
             prev_state = next_state
 
-        return dance, mixture_params
+            if i == 355:
+                # archivo = open("archivo.txt","w")
+                # archivo.write(str((dance)))
+                # archivo.close()
+                for j, sequence in enumerate(dance):
+                    print('Maxi,mini: ')
+                    print(maxi)
+                    print(mini)
+                    dance[j] = sequence * (maxi - mini) + mini;
+                np.savetxt('foo.csv', dance, delimiter=",")
+
+        return dance  # , mixture_params

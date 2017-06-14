@@ -44,13 +44,13 @@ print("loading model: ", ckpt.model_checkpoint_path)
 saver.restore(sess, ckpt.model_checkpoint_path)
 
 def sample_stroke():
-  [dance, params] = model.sample(sess)
+  dance = model.sample(sess)
 #   draw_strokes(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.normal.svg')
 #   draw_strokes_random_color(strokes, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.color.svg')
 #   draw_strokes_random_color(strokes, factor=sample_args.scale_factor, per_stroke_mode = False, svg_filename = sample_args.filename+'.multi_color.svg')
 #   draw_strokes_eos_weighted(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.eos_pdf.svg')
 #   draw_strokes_pdf(strokes, params, factor=sample_args.scale_factor, svg_filename = sample_args.filename+'.pdf.svg')
-  return [dance, params]
+  return dance
 
 
 def freeze_and_save_graph(sess, folder, out_nodes, as_text=False):
@@ -65,6 +65,6 @@ def freeze_and_save_graph(sess, folder, out_nodes, as_text=False):
 if(sample_args.freeze_graph):
     freeze_and_save_graph(sess, sample_args.model_dir, ['data_out_mdn', 'data_out_eos', 'state_out'], False)
 
-[dance, params] = sample_stroke()
+dance = sample_stroke()
 
 
