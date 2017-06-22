@@ -30,7 +30,7 @@ def main():
                         help='minibatch size')
     parser.add_argument('--seq_length', type=int, default=3 * 30,
                         help='RNN sequence length')
-    parser.add_argument('--num_epochs', type=int, default=1,
+    parser.add_argument('--num_epochs', type=int, default=100,
                         help='number of epochs')
     parser.add_argument('--save_every', type=int, default=500,
                         help='save frequency')
@@ -44,7 +44,7 @@ def main():
                         help='decay rate for rmsprop')
     parser.add_argument('--num_mixture', type=int, default=25,
                         help='number of gaussian mixtures')
-    parser.add_argument('--data_scale', type=float, default=20,
+    parser.add_argument('--data_scale', type=float, default=40,
                         help='factor to scale raw data down by')
     parser.add_argument('--keep_prob', type=float, default=0.8,
                         help='dropout keep probability')
@@ -81,14 +81,13 @@ def train(args):
                 i = e * data_loader.num_batches + b
                 start = time.time()
                 x, y = next(batch_generator)
-                feed = {model.input_data: x, model.target_data: y, model.state_in: state}
-                train_loss_summary, train_loss, state, _ = sess.run(
-                    [model.train_loss_summary, model.cost, model.state_out, model.train_op], feed)
-                summary_writer.add_summary(train_loss_summary, i)
 
+                feed = {model.input_data: x, model.target_data: y, model.state_in: state}
+                train_loss_summary, train_loss, state, _, tmp = sess.run(
+                    [model.train_loss_summary, model.cost, model.state_out, model.train_op, model.tmp], feed)
+                summary_writer.add_summary(train_loss_summary, i)
                 valid_loss_summary, valid_loss, = sess.run([model.valid_loss_summary, model.cost], valid_feed)
                 summary_writer.add_summary(valid_loss_summary, i)
-
                 end = time.time()
                 print(
                     "{}/{} (epoch {}), train_loss = {:.3f}, valid_loss = {:.3f}, time/batch = {:.3f}".format(
@@ -100,6 +99,10 @@ def train(args):
                     checkpoint_path = os.path.join(args.model_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=e * data_loader.num_batches + b)
                     print("model saved to {}".format(checkpoint_path))
+                if b == 0:
+                    print(tmp)
+                if b== 50:
+                    print(tmp)
 
 
 
